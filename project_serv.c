@@ -9,14 +9,13 @@
 #include <sys/time.h>
 #include <sys/select.h>
 #include <ctype.h>
-#include <termios.h>
 #include <fcntl.h>
 #include <signal.h>
 
 #define BUF_SIZE 1024
 #define MAX_CLNT 256
 #define ROOM_MAX 5
-#define RANK_NUM 5
+#define RANK_NUM 10
 #define NAME_LEN 20
 
 struct room{
@@ -46,25 +45,8 @@ room rooms[ROOM_MAX];
 rank ranks[RANK_NUM+1];
 fd_set reads;
 int fd_max;
+FILE * rankingfile;
 
-void tty_mode(int how){
-    static struct termios original_mode;
-    if(how == 0)
-        tcgetattr(0, &original_mode);
-    else
-        tcsetattr(0, TCSANOW, &original_mode);
-}
-
-void set_cr_noecho_mode(void){
-    struct termios ttystate;
-    tcgetattr(0, &ttystate);
-    ttystate.c_lflag &= ~ICANON;
-    ttystate.c_lflag &= ~ECHO;
-    ttystate.c_cc[VMIN] = 1;
-    
-    tcsetattr(0, TCSANOW, &ttystate);
-    
-}
 
 void print_board(int board[19][19]){
     system("clear");
@@ -103,8 +85,14 @@ int main(int argc, char *argv[])
         printf("Usage : %s <port>\n", argv[0]);
         exit(1);
     }
-    
+    rankingfile = fopen("rankingfile.txt", "r");
+    if(rankingfile == NULL){
+        rankingfile = fopen("rankingfile.txt","w");
+    }
     init();
+    fclose(rankingfile);
+    
+    
     
     pthread_mutex_init(&mutx, NULL);
     serv_sock=socket(PF_INET, SOCK_STREAM, 0);
@@ -125,7 +113,6 @@ int main(int argc, char *argv[])
     
     
     void ctrl_c_handler(int);
-    tty_mode(0);
     signal(SIGINT, ctrl_c_handler);
     
     while(1)
@@ -243,13 +230,12 @@ int main(int argc, char *argv[])
             }
         }
     }
-    tty_mode(1);
     pthread_mutex_destroy(&mutx);
     close(serv_sock);
+    fclose(rankingfile);
     return 0;
 }
 void ctrl_c_handler(int signum){
-    tty_mode(1);
     pthread_mutex_destroy(&mutx);
     exit(1);
 }
@@ -262,8 +248,11 @@ void init(){
         rooms[i].player[0] = -1;
         rooms[i].player[1] = -1;
     }
-    for(int i = 0; i < RANK_NUM; i++)
-        ranks[i].winning_streak = 0;
+    char* buf[100];
+    for(int i = 0; i < RANK_NUM; i++){
+        if( fscanf(rankingfile,"%s%d", ranks[i].name, &ranks[i].winning_streak) < 2)
+            ranks[i].winning_streak = 0;
+    }
 }
 
 void print_rooms(char * buf){
@@ -307,6 +296,13 @@ void rank_in(char * name, int winning_streak){
     
     //여따가 ranks 배열 파일로 출력하면 됨
     //그리고 main 에서 암때나 랭킹파일 읽어서 ranks 에 고대로 다시 저장되게 하셈
+    rankingfile = fopen("rankingfile.txt","w");
+     for(i = 0; i < RANK_NUM; i ++){
+         if(ranks[i].winning_streak == 0)
+             break;
+         fprintf(rankingfile, "%s %d\n", ranks[i].name, ranks[i].winning_streak);
+     }
+    fclose(rankingfile);
 }
 
 int find(int fd){
