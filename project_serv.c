@@ -140,7 +140,7 @@ int main(int argc, char *argv[])
                     if(fd_max<clnt_sock)
                         fd_max = clnt_sock;
                     printf("connected client: %d \n", clnt_sock);
-                    sprintf(buf2, "!Welcome to rock-paper-scissors survivor game!\n");
+                    sprintf(buf2, "!Welcome to Online Omok game!\n");
                     print_rooms(buf2);
                     write(clnt_sock, buf2, strlen(buf2));
                     usleep(10000);
@@ -273,9 +273,11 @@ void print_rooms(char * buf){
 void rank_in(char * name, int winning_streak){
     int i;
     int prev = RANK_NUM;
+    int rankerchk = 0;
     for(i = 0; i < RANK_NUM; i ++){
         if(strcmp(ranks[i].name,name) == 0){
             prev = i;
+            rankerchk = 1;
         }
     }
     for(i = RANK_NUM; i > 0; i --){
@@ -291,8 +293,10 @@ void rank_in(char * name, int winning_streak){
         }else
             break;
     }
-    ranks[i].winning_streak = winning_streak;
-    strcpy(ranks[i].name,name);
+    if(rankerchk == 0 || (rankerchk == 1 && i <= prev)){
+        ranks[i].winning_streak = winning_streak;
+        strcpy(ranks[i].name,name);
+    }
     
     //여따가 ranks 배열 파일로 출력하면 됨
     //그리고 main 에서 암때나 랭킹파일 읽어서 ranks 에 고대로 다시 저장되게 하셈
@@ -428,8 +432,10 @@ void * play_game(void * arg)
             defender = -1;
             write(challenger,msg,str_len);
             rooms[room_number].winning_streak = 1;
+            pthread_mutex_lock(&mutx);
+            rank_in(rooms[room_number].defender,rooms[room_number].winning_streak);
+            pthread_mutex_unlock(&mutx);
             write(challenger, "please wait for challenger... \n", strlen("please wait for challenger... \n"));
-            read(challenger, msg, sizeof(msg));
             break;
         }
         sscanf(msg,"%d %d",&x, &y);
@@ -453,6 +459,9 @@ void * play_game(void * arg)
                 challenger = -1;
                 write(defender,msg,str_len);
                 rooms[room_number].winning_streak ++;
+                pthread_mutex_lock(&mutx);
+                rank_in(rooms[room_number].defender,rooms[room_number].winning_streak);
+                pthread_mutex_unlock(&mutx);
                 write(defender, "please wait for challenger... \n", strlen("please wait for challenger... \n"));
                 break;
             }
